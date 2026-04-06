@@ -1,53 +1,81 @@
 const APP_CONFIG = window.MINIMAL_SUBS_CONFIG || {};
 const CHANNEL_ID_PATTERN = /^UC[a-zA-Z0-9_-]{22}$/;
+const SHORTS_PATTERN = /(^|[\s\[\(])#?shorts\b/i;
+const SHORTS_URL_PATTERN = /youtube\.com\/shorts\//i;
+const FEED_CHANNEL_BATCH_SIZE = 20;
+const FEED_LIMIT_PER_CHANNEL = 6;
+const DEFAULT_MAX_VIDEO_AGE_DAYS = 14;
+const DEFAULT_MAX_VISIBLE_VIDEOS = 60;
+
 const STORAGE_KEYS = {
     channels: "minimalSubscriptions.channels",
     videos: "minimalSubscriptions.videos",
     settings: "minimalSubscriptions.settings",
     feedMeta: "minimalSubscriptions.feedMeta"
 };
+
 const DEFAULT_SETTINGS = {
     playbackProvider: "youtube",
     invidiousBase: "https://yewtu.be",
-    showThumbnails: false
+    showThumbnails: false,
+    showShorts: false,
+    maxAgeDays: DEFAULT_MAX_VIDEO_AGE_DAYS,
+    maxVisibleVideos: DEFAULT_MAX_VISIBLE_VIDEOS
 };
+
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
+
+const refreshFeedButton = document.querySelector("#refresh-feed-button");
+const openSettingsButton = document.querySelector("#open-settings-button");
+const closeSettingsButton = document.querySelector("#close-settings-button");
+const settingsOverlay = document.querySelector("#settings-overlay");
+
+const loadMoreButton = document.querySelector("#load-more-button");
+const loadMoreStatus = document.querySelector("#load-more-status");
+const feedStats = document.querySelector("#feed-stats");
+const feedError = document.querySelector("#feed-error");
+const feedList = document.querySelector("#feed-list");
+const feedEmpty = document.querySelector("#feed-empty");
+const channelCount = document.querySelector("#channel-count");
 
 const googleImportButton = document.querySelector("#google-import-button");
 const googleStatus = document.querySelector("#google-status");
 const opmlInput = document.querySelector("#opml-input");
 const opmlStatus = document.querySelector("#opml-status");
-const searchInput = document.querySelector("#search-input");
-const channelFilter = document.querySelector("#channel-filter");
+
 const playbackProvider = document.querySelector("#playback-provider");
 const invidiousBase = document.querySelector("#invidious-base");
 const showThumbnails = document.querySelector("#show-thumbnails");
-const refreshFeedButton = document.querySelector("#refresh-feed-button");
+const showShorts = document.querySelector("#show-shorts");
+
+const subscriptionSearch = document.querySelector("#subscription-search");
+const subscriptionList = document.querySelector("#subscription-list");
+const subscriptionEmpty = document.querySelector("#subscription-empty");
 const clearSubscriptionsButton = document.querySelector("#clear-subscriptions-button");
-const channelCount = document.querySelector("#channel-count");
-const channelList = document.querySelector("#channel-list");
-const feedStats = document.querySelector("#feed-stats");
-const feedError = document.querySelector("#feed-error");
-const feedList = document.querySelector("#feed-list");
-const feedEmpty = document.querySelector("#feed-empty");
 
 const state = {
     channels: [],
     videos: [],
     settings: { ...DEFAULT_SETTINGS },
-    filters: {
-        query: "",
-        channelId: ""
-    },
     feedMeta: {
         lastUpdatedAt: null,
         failures: []
+    },
+    feedPager: {
+        nextCursor: 0,
+        hasMore: false,
+        totalChannels: 0,
+        loadedChannels: 0,
+        isLoading: false
     },
     google: {
         tokenClient: null,
         pendingResolve: null,
         pendingReject: null,
         accessToken: ""
+    },
+    ui: {
+        lastFocusedBeforeModal: null
     }
 };
 
@@ -67,20 +95,6 @@ function writeStorage(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
 }
 
-function hydrateState() {
-    state.channels = normalizeChannels(readStorage(STORAGE_KEYS.channels, []));
-    state.videos = normalizeVideos(readStorage(STORAGE_KEYS.videos, []));
-    state.settings = {
-        ...DEFAULT_SETTINGS,
-        ...readStorage(STORAGE_KEYS.settings, {})
-    };
-    state.feedMeta = {
-        lastUpdatedAt: null,
-        failures: [],
-        ...readStorage(STORAGE_KEYS.feedMeta, {})
-    };
-}
-
 function persistChannels() {
     writeStorage(STORAGE_KEYS.channels, state.channels);
 }
@@ -95,6 +109,28 @@ function persistSettings() {
 
 function persistFeedMeta() {
     writeStorage(STORAGE_KEYS.feedMeta, state.feedMeta);
+}
+
+function resetFeedPager() {
+    state.feedPager = {
+        nextCursor: 0,
+        hasMore: false,
+        totalChannels: state.channels.length,
+        loadedChannels: 0,
+        isLoading: false
+    };
+}
+
+function hydrateState() {
+    state.channels = normalizeChannels(readStorage(STORAGE_KEYS.channels, []));
+    state.videos = normalizeVideos(readStorage(STORAGE_KEYS.videos, []));
+    state.settings = normalizeSettings(readStorage(STORAGE_KEYS.settings, {}));
+    state.feedMeta = {
+        lastUpdatedAt: null,
+        failures: [],
+        ...readStorage(STORAGE_KEYS.feedMeta, {})
+    };
+    resetFeedPager();
 }
 
 function getGoogleClientId() {
@@ -147,6 +183,27 @@ function normalizeInvidiousBase(value) {
     }
 
     return parsedUrl.origin;
+}
+
+function clampInteger(value, fallback, min, max) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, Math.floor(numericValue)));
+}
+
+function normalizeSettings(inputSettings) {
+    const source = inputSettings && typeof inputSettings === "object" ? inputSettings : {};
+
+    return {
+        playbackProvider: source.playbackProvider === "invidious" ? "invidious" : "youtube",
+        invidiousBase: normalizeInvidiousBase(source.invidiousBase),
+        showThumbnails: Boolean(source.showThumbnails),
+        showShorts: Boolean(source.showShorts),
+        maxAgeDays: clampInteger(source.maxAgeDays, DEFAULT_SETTINGS.maxAgeDays, 1, 3650),
+        maxVisibleVideos: clampInteger(source.maxVisibleVideos, DEFAULT_SETTINGS.maxVisibleVideos, 10, 1000)
+    };
 }
 
 function extractChannelIdFromValue(value) {
@@ -242,6 +299,9 @@ function normalizeVideo(video) {
     }
 
     const channelId = extractChannelIdFromValue(video.channelId || "");
+    const youtubeUrl = normalizeText(video.youtubeUrl || `https://www.youtube.com/watch?v=${videoId}`);
+    const alternateUrl = normalizeText(video.alternateUrl || youtubeUrl);
+
     return {
         videoId,
         title: normalizeText(video.title || "Untitled video"),
@@ -249,7 +309,9 @@ function normalizeVideo(video) {
         channelTitle: normalizeText(video.channelTitle || "Unknown channel"),
         publishedAt: normalizeText(video.publishedAt || ""),
         thumbnailUrl: normalizeText(video.thumbnailUrl || ""),
-        youtubeUrl: normalizeText(video.youtubeUrl || `https://www.youtube.com/watch?v=${videoId}`)
+        youtubeUrl,
+        alternateUrl,
+        isShort: Boolean(video.isShort) || SHORTS_URL_PATTERN.test(youtubeUrl) || SHORTS_URL_PATTERN.test(alternateUrl)
     };
 }
 
@@ -282,6 +344,33 @@ function normalizeVideos(videos) {
     });
 }
 
+function isLikelyShort(video) {
+    if (video.isShort) {
+        return true;
+    }
+
+    if (SHORTS_URL_PATTERN.test(video.youtubeUrl || "") || SHORTS_URL_PATTERN.test(video.alternateUrl || "")) {
+        return true;
+    }
+
+    return SHORTS_PATTERN.test(video.title || "");
+}
+
+function isWithinMaxAge(video, maxAgeDays) {
+    if (!maxAgeDays || maxAgeDays <= 0) {
+        return true;
+    }
+
+    const publishedAtMs = Date.parse(video.publishedAt || "");
+    if (!publishedAtMs) {
+        return false;
+    }
+
+    const ageMs = Date.now() - publishedAtMs;
+    const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+    return ageMs <= maxAgeMs;
+}
+
 function mergeChannels(incomingChannels) {
     const nextChannels = normalizeChannels([...(state.channels || []), ...(incomingChannels || [])]);
     const before = new Set(state.channels.map((channel) => channel.channelId));
@@ -296,6 +385,8 @@ function mergeChannels(incomingChannels) {
             addedCount += 1;
         }
     });
+
+    resetFeedPager();
 
     return {
         addedCount,
@@ -351,7 +442,7 @@ function ensureGoogleClient() {
 
     const googleClientId = getGoogleClientId();
     if (!googleClientId) {
-        throw new Error("Set a Google client id in the meta tag google-client-id before using Google import.");
+        throw new Error("Set a Google client id in the head meta tag google-client-id before using Google import.");
     }
 
     if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
@@ -470,77 +561,153 @@ function getAlternatePlaybackUrl(video) {
     return `${baseUrl}/watch?v=${encodeURIComponent(video.videoId)}`;
 }
 
-function updateChannelFilterOptions() {
-    const previousValue = state.filters.channelId;
-    channelFilter.innerHTML = "";
+function openSettingsModal() {
+    state.ui.lastFocusedBeforeModal = document.activeElement instanceof HTMLElement ? document.activeElement : openSettingsButton;
 
-    const allOption = document.createElement("option");
-    allOption.value = "";
-    allOption.textContent = "All Channels";
-    channelFilter.append(allOption);
+    settingsOverlay.hidden = false;
+    settingsOverlay.removeAttribute("inert");
+    settingsOverlay.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
 
-    state.channels.forEach((channel) => {
-        const option = document.createElement("option");
-        option.value = channel.channelId;
-        option.textContent = channel.title;
-        channelFilter.append(option);
+    requestAnimationFrame(() => {
+        closeSettingsButton.focus({ preventScroll: true });
     });
-
-    channelFilter.value = previousValue;
 }
 
-function renderChannels() {
-    channelCount.textContent = `${state.channels.length} channel${state.channels.length === 1 ? "" : "s"} loaded.`;
-    channelList.innerHTML = "";
+function closeSettingsModal() {
+    const focusTarget = state.ui.lastFocusedBeforeModal && document.contains(state.ui.lastFocusedBeforeModal)
+        ? state.ui.lastFocusedBeforeModal
+        : openSettingsButton;
 
-    if (!state.channels.length) {
-        const item = document.createElement("li");
-        item.className = "channel-item";
-        item.textContent = "No subscriptions imported yet.";
-        channelList.append(item);
-        updateChannelFilterOptions();
-        return;
+    if (settingsOverlay.contains(document.activeElement)) {
+        focusTarget.focus({ preventScroll: true });
     }
 
-    state.channels.forEach((channel) => {
-        const item = document.createElement("li");
-        item.className = "channel-item";
+    settingsOverlay.setAttribute("inert", "");
+    settingsOverlay.setAttribute("aria-hidden", "true");
+    settingsOverlay.hidden = true;
+    document.body.classList.remove("modal-open");
 
-        const title = document.createElement("span");
-        title.textContent = channel.title;
-
-        const source = document.createElement("span");
-        source.textContent = channel.sourceTags.join(" + ");
-
-        item.append(title, source);
-        channelList.append(item);
-    });
-
-    updateChannelFilterOptions();
+    state.ui.lastFocusedBeforeModal = null;
 }
 
-function getFilteredVideos() {
-    const query = state.filters.query.toLowerCase().trim();
-    const activeChannelId = state.filters.channelId;
+function updateChannelCount() {
+    const count = state.channels.length;
+    channelCount.textContent = `${count} subscription${count === 1 ? "" : "s"} loaded.`;
+}
 
-    return state.videos.filter((video) => {
-        const matchesQuery = !query || `${video.title} ${video.channelTitle}`.toLowerCase().includes(query);
-        const matchesChannel = !activeChannelId || video.channelId === activeChannelId;
-        return matchesQuery && matchesChannel;
+function renderSubscriptionManager() {
+    const query = normalizeText(subscriptionSearch.value).toLowerCase();
+    const filteredChannels = state.channels.filter((channel) => {
+        if (!query) {
+            return true;
+        }
+        return channel.title.toLowerCase().includes(query);
     });
+
+    subscriptionList.innerHTML = "";
+
+    filteredChannels.forEach((channel) => {
+        const item = document.createElement("li");
+        item.className = "subscription-item";
+
+        const meta = document.createElement("div");
+        meta.className = "subscription-meta";
+
+        const name = document.createElement("p");
+        name.className = "subscription-name";
+        name.textContent = channel.title;
+
+        const source = document.createElement("p");
+        source.className = "subscription-source";
+        source.textContent = channel.sourceTags.join(" + ");
+
+        meta.append(name, source);
+
+        const removeButton = document.createElement("button");
+        removeButton.className = "remove-channel-button";
+        removeButton.type = "button";
+        removeButton.dataset.removeChannel = "1";
+        removeButton.dataset.channelId = channel.channelId;
+        removeButton.textContent = "Remove";
+
+        item.append(meta, removeButton);
+        subscriptionList.append(item);
+    });
+
+    subscriptionEmpty.style.display = filteredChannels.length ? "none" : "block";
+}
+
+function getVisibleFeedState() {
+    const channelIds = new Set(state.channels.map((channel) => channel.channelId));
+    const visibleVideos = [];
+    const hiddenCounts = {
+        missingChannel: 0,
+        shorts: 0,
+        age: 0,
+        cap: 0
+    };
+
+    state.videos.forEach((video) => {
+        const hasChannel = !channelIds.size || channelIds.has(video.channelId);
+        if (!hasChannel) {
+            hiddenCounts.missingChannel += 1;
+            return;
+        }
+
+        if (!state.settings.showShorts && isLikelyShort(video)) {
+            hiddenCounts.shorts += 1;
+            return;
+        }
+
+        if (!isWithinMaxAge(video, state.settings.maxAgeDays)) {
+            hiddenCounts.age += 1;
+            return;
+        }
+
+        if (visibleVideos.length >= state.settings.maxVisibleVideos) {
+            hiddenCounts.cap += 1;
+            return;
+        }
+
+        visibleVideos.push(video);
+    });
+
+    return {
+        visibleVideos,
+        hiddenCounts
+    };
+}
+
+function renderFeedStats(visibleVideos, hiddenCounts) {
+    const lastUpdated = state.feedMeta.lastUpdatedAt ? formatDateLabel(state.feedMeta.lastUpdatedAt) : "never";
+    const hiddenSummaryParts = [];
+
+    if (!state.settings.showShorts && hiddenCounts.shorts > 0) {
+        hiddenSummaryParts.push(`${hiddenCounts.shorts} shorts hidden`);
+    }
+    if (hiddenCounts.age > 0) {
+        hiddenSummaryParts.push(`${hiddenCounts.age} older than ${state.settings.maxAgeDays} days`);
+    }
+    if (hiddenCounts.cap > 0) {
+        hiddenSummaryParts.push(`${hiddenCounts.cap} beyond ${state.settings.maxVisibleVideos}-item cap`);
+    }
+
+    const hiddenSummary = hiddenSummaryParts.length ? ` Hidden: ${hiddenSummaryParts.join(", ")}.` : "";
+    feedStats.textContent = `${visibleVideos.length} videos shown. ${state.videos.length} loaded. Last refresh: ${lastUpdated}.${hiddenSummary}`;
 }
 
 function renderFeed() {
-    const filteredVideos = getFilteredVideos();
+    const { visibleVideos, hiddenCounts } = getVisibleFeedState();
     feedList.innerHTML = "";
 
-    if (!filteredVideos.length) {
+    if (!visibleVideos.length) {
         feedEmpty.style.display = "block";
     } else {
         feedEmpty.style.display = "none";
     }
 
-    filteredVideos.forEach((video) => {
+    visibleVideos.forEach((video) => {
         const item = document.createElement("li");
         item.className = `feed-item${state.settings.showThumbnails && video.thumbnailUrl ? " with-thumbnail" : ""}`;
 
@@ -549,6 +716,8 @@ function renderFeed() {
             thumbnail.className = "feed-thumbnail";
             thumbnail.src = video.thumbnailUrl;
             thumbnail.alt = `Thumbnail for ${video.title}`;
+            thumbnail.loading = "lazy";
+            thumbnail.decoding = "async";
             item.append(thumbnail);
         }
 
@@ -589,11 +758,48 @@ function renderFeed() {
         feedList.append(item);
     });
 
-    const totalVideos = state.videos.length;
-    const filteredCount = filteredVideos.length;
-    const lastUpdated = state.feedMeta.lastUpdatedAt ? formatDateLabel(state.feedMeta.lastUpdatedAt) : "never";
+    renderFeedStats(visibleVideos, hiddenCounts);
+}
 
-    feedStats.textContent = `${filteredCount} shown of ${totalVideos}. Last refresh: ${lastUpdated}.`;
+function updateLoadMoreUI() {
+    const hasChannels = state.channels.length > 0;
+
+    loadMoreButton.style.display = hasChannels ? "inline-flex" : "none";
+    if (!hasChannels) {
+        loadMoreButton.disabled = true;
+        loadMoreStatus.textContent = "Import channels from Settings to begin.";
+        return;
+    }
+
+    if (state.feedPager.isLoading) {
+        loadMoreButton.disabled = true;
+        loadMoreStatus.textContent = "Fetching the next batch...";
+        return;
+    }
+
+    const totalChannels = state.feedPager.totalChannels || state.channels.length;
+    const loadedChannels = Math.min(state.feedPager.loadedChannels || 0, totalChannels);
+
+    if (loadedChannels === 0 && !state.videos.length) {
+        loadMoreButton.disabled = true;
+        loadMoreStatus.textContent = "Refresh to start loading in batches.";
+        return;
+    }
+
+    if (state.feedPager.hasMore) {
+        loadMoreButton.disabled = false;
+        loadMoreButton.textContent = "Load More Channels";
+        loadMoreStatus.textContent = `${loadedChannels}/${totalChannels} channels loaded in this refresh.`;
+        return;
+    }
+
+    loadMoreButton.disabled = true;
+    loadMoreButton.textContent = "All Channels Loaded";
+    if (loadedChannels === 0 && state.videos.length) {
+        loadMoreStatus.textContent = "Showing cached feed snapshot. Refresh for live data.";
+    } else {
+        loadMoreStatus.textContent = `Loaded all ${totalChannels} channels for this refresh.`;
+    }
 }
 
 function setRefreshState(isLoading) {
@@ -601,14 +807,31 @@ function setRefreshState(isLoading) {
     refreshFeedButton.textContent = isLoading ? "Refreshing..." : "Refresh Feed";
 }
 
-async function fetchFeed() {
+async function fetchFeedBatch(reset) {
     if (!state.channels.length) {
-        setFeedError("Import channels first, then refresh your feed.", "warning");
+        setFeedError("Import subscriptions in Settings first, then refresh the feed.", "warning");
         return;
     }
 
+    if (state.feedPager.isLoading) {
+        return;
+    }
+
+    if (reset) {
+        state.videos = [];
+        state.feedMeta.failures = [];
+        persistVideos();
+        persistFeedMeta();
+        resetFeedPager();
+        renderFeed();
+        setFeedError("");
+    }
+
+    const cursor = reset ? 0 : state.feedPager.nextCursor;
+
+    state.feedPager.isLoading = true;
     setRefreshState(true);
-    setFeedError("");
+    updateLoadMoreUI();
 
     try {
         const response = await fetch("/api/feed", {
@@ -618,35 +841,116 @@ async function fetchFeed() {
             },
             body: JSON.stringify({
                 channelIds: state.channels.map((channel) => channel.channelId),
-                limitPerChannel: 8
+                limitPerChannel: FEED_LIMIT_PER_CHANNEL,
+                cursor,
+                batchSize: FEED_CHANNEL_BATCH_SIZE
             })
         });
 
         const payload = await response.json();
         if (!response.ok) {
-            throw new Error(payload?.error || "Could not fetch feed from API.");
+            throw new Error(payload?.error || "Could not fetch feed batch.");
         }
 
-        state.videos = normalizeVideos(payload.videos || []);
-        state.feedMeta = {
-            lastUpdatedAt: payload.generatedAt || new Date().toISOString(),
-            failures: Array.isArray(payload.failures) ? payload.failures : []
-        };
+        const incomingVideos = normalizeVideos(payload.videos || []);
+        state.videos = normalizeVideos(reset ? incomingVideos : [...state.videos, ...incomingVideos]);
+
+        const totalChannels = Number(payload.totalChannels);
+        const nextCursor = Number(payload.nextCursor);
+        const loadedChannels = Number(payload.loadedChannels);
+
+        state.feedPager.totalChannels = Number.isFinite(totalChannels) && totalChannels >= 0 ? totalChannels : state.channels.length;
+        state.feedPager.nextCursor = Number.isFinite(nextCursor) && nextCursor >= 0 ? nextCursor : state.feedPager.totalChannels;
+        state.feedPager.loadedChannels = Number.isFinite(loadedChannels) && loadedChannels >= 0
+            ? Math.min(loadedChannels, state.feedPager.totalChannels)
+            : Math.min(state.feedPager.nextCursor, state.feedPager.totalChannels);
+        state.feedPager.hasMore = Boolean(payload.hasMore);
+
+        state.feedMeta.lastUpdatedAt = payload.generatedAt || new Date().toISOString();
+        state.feedMeta.failures = Array.isArray(payload.failures) ? payload.failures : [];
 
         persistVideos();
         persistFeedMeta();
+
         renderFeed();
 
         if (state.feedMeta.failures.length) {
-            setFeedError(`${state.feedMeta.failures.length} channels failed to load. Partial feed shown.`, "warning");
+            setFeedError(`${state.feedMeta.failures.length} channels failed in this batch. Partial feed shown.`, "warning");
         } else {
             setFeedError("");
         }
     } catch (error) {
         setFeedError(error.message || "Feed refresh failed.", "error");
     } finally {
+        state.feedPager.isLoading = false;
         setRefreshState(false);
+        updateLoadMoreUI();
     }
+}
+
+async function refreshFeed() {
+    await fetchFeedBatch(true);
+}
+
+async function loadMoreFeed() {
+    if (!state.feedPager.hasMore || state.feedPager.isLoading) {
+        return;
+    }
+
+    await fetchFeedBatch(false);
+}
+
+function removeChannel(channelId) {
+    const targetChannel = state.channels.find((channel) => channel.channelId === channelId);
+    if (!targetChannel) {
+        return;
+    }
+
+    state.channels = state.channels.filter((channel) => channel.channelId !== channelId);
+    state.videos = state.videos.filter((video) => video.channelId !== channelId);
+    state.feedMeta.failures = [];
+
+    persistChannels();
+    persistVideos();
+    persistFeedMeta();
+
+    resetFeedPager();
+
+    updateChannelCount();
+    renderSubscriptionManager();
+    renderFeed();
+    updateLoadMoreUI();
+
+    setFeedError(`Removed ${targetChannel.title}. Refresh feed to rebuild batch progress.`, "warning");
+}
+
+function clearAllSubscriptions() {
+    const isConfirmed = window.confirm("Clear all imported channels and cached videos?");
+    if (!isConfirmed) {
+        return;
+    }
+
+    state.channels = [];
+    state.videos = [];
+    state.feedMeta = {
+        lastUpdatedAt: null,
+        failures: []
+    };
+
+    persistChannels();
+    persistVideos();
+    persistFeedMeta();
+
+    resetFeedPager();
+
+    updateChannelCount();
+    renderSubscriptionManager();
+    renderFeed();
+    updateLoadMoreUI();
+
+    setFeedError("");
+    setStatus(googleStatus, "Google import is idle.");
+    setStatus(opmlStatus, "OPML import is idle.");
 }
 
 async function handleGoogleImport() {
@@ -659,14 +963,17 @@ async function handleGoogleImport() {
         const importedChannels = await fetchGoogleSubscriptions(accessToken);
 
         if (!importedChannels.length) {
-            setStatus(googleStatus, "No subscriptions found in Google account.", "warning");
+            setStatus(googleStatus, "No subscriptions found in this Google account.", "warning");
             return;
         }
 
         const result = mergeChannels(importedChannels);
-        renderChannels();
+        updateChannelCount();
+        renderSubscriptionManager();
         renderFeed();
+        updateLoadMoreUI();
         setStatus(googleStatus, `Imported ${result.addedCount} new channels. ${result.totalCount} total.`, "success");
+        setFeedError("Subscriptions updated. Press Refresh Feed on the main page.", "warning");
     } catch (error) {
         setStatus(googleStatus, error.message || "Google import failed.", "error");
     } finally {
@@ -692,14 +999,19 @@ async function handleOpmlImport(event) {
         }
 
         const result = mergeChannels(parsed.channels);
-        renderChannels();
+
+        updateChannelCount();
+        renderSubscriptionManager();
         renderFeed();
+        updateLoadMoreUI();
 
         if (parsed.skippedItems.length) {
             setStatus(opmlStatus, `Imported ${result.addedCount} new channels. Skipped ${parsed.skippedItems.length} invalid entries.`, "warning");
         } else {
             setStatus(opmlStatus, `Imported ${result.addedCount} new channels. ${result.totalCount} total.`, "success");
         }
+
+        setFeedError("Subscriptions updated. Press Refresh Feed on the main page.", "warning");
     } catch (error) {
         setStatus(opmlStatus, error.message || "OPML import failed.", "error");
     } finally {
@@ -707,55 +1019,44 @@ async function handleOpmlImport(event) {
     }
 }
 
-function clearAllSubscriptions() {
-    const isConfirmed = window.confirm("Clear all imported channels and cached videos?");
-    if (!isConfirmed) {
-        return;
-    }
-
-    state.channels = [];
-    state.videos = [];
-    state.feedMeta = {
-        lastUpdatedAt: null,
-        failures: []
-    };
-
-    persistChannels();
-    persistVideos();
-    persistFeedMeta();
-
-    state.filters.channelId = "";
-    channelFilter.value = "";
-
-    renderChannels();
-    renderFeed();
-    setFeedError("");
-    setStatus(googleStatus, "Google import is idle.");
-    setStatus(opmlStatus, "OPML import is idle.");
-}
-
 function hydrateControls() {
     playbackProvider.value = state.settings.playbackProvider;
     invidiousBase.value = state.settings.invidiousBase;
     showThumbnails.checked = state.settings.showThumbnails;
+    showShorts.checked = state.settings.showShorts;
+}
 
-    searchInput.value = state.filters.query;
-    channelFilter.value = state.filters.channelId;
+function initializeGoogleStatus() {
+    const hasConfiguredClientId = Boolean(getGoogleClientId());
+    if (!hasConfiguredClientId) {
+        setStatus(googleStatus, "Google client id not configured yet. Add it in meta[name=google-client-id].", "warning");
+    } else {
+        setStatus(googleStatus, "Google import is idle.");
+    }
+    setStatus(opmlStatus, "OPML import is idle.");
 }
 
 function attachEventListeners() {
+    refreshFeedButton.addEventListener("click", refreshFeed);
+    loadMoreButton.addEventListener("click", loadMoreFeed);
+
+    openSettingsButton.addEventListener("click", openSettingsModal);
+    closeSettingsButton.addEventListener("click", closeSettingsModal);
+
+    settingsOverlay.addEventListener("click", (event) => {
+        if (event.target === settingsOverlay) {
+            closeSettingsModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !settingsOverlay.hidden) {
+            closeSettingsModal();
+        }
+    });
+
     googleImportButton.addEventListener("click", handleGoogleImport);
     opmlInput.addEventListener("change", handleOpmlImport);
-
-    searchInput.addEventListener("input", (event) => {
-        state.filters.query = normalizeText(event.target.value);
-        renderFeed();
-    });
-
-    channelFilter.addEventListener("change", (event) => {
-        state.filters.channelId = event.target.value;
-        renderFeed();
-    });
 
     playbackProvider.addEventListener("change", (event) => {
         state.settings.playbackProvider = event.target.value === "invidious" ? "invidious" : "youtube";
@@ -776,26 +1077,42 @@ function attachEventListeners() {
         renderFeed();
     });
 
-    refreshFeedButton.addEventListener("click", fetchFeed);
+    showShorts.addEventListener("change", (event) => {
+        state.settings.showShorts = Boolean(event.target.checked);
+        persistSettings();
+        renderFeed();
+    });
+
+    subscriptionSearch.addEventListener("input", renderSubscriptionManager);
+
+    subscriptionList.addEventListener("click", (event) => {
+        const removeButton = event.target.closest("button[data-remove-channel]");
+        if (!removeButton) {
+            return;
+        }
+        removeChannel(removeButton.dataset.channelId || "");
+    });
+
     clearSubscriptionsButton.addEventListener("click", clearAllSubscriptions);
 }
 
-function initializeGoogleStatus() {
-    const hasConfiguredClientId = Boolean(getGoogleClientId());
-    if (!hasConfiguredClientId) {
-        setStatus(googleStatus, "Google client id is not configured yet. Add it in the head meta tag google-client-id.", "warning");
-    } else {
-        setStatus(googleStatus, "Google import is idle.");
-    }
-}
-
 function boot() {
+    settingsOverlay.setAttribute("inert", "");
+    settingsOverlay.setAttribute("aria-hidden", "true");
+    settingsOverlay.hidden = true;
+
     hydrateState();
-    renderChannels();
-    renderFeed();
     hydrateControls();
+    updateChannelCount();
+    renderSubscriptionManager();
+    renderFeed();
+    updateLoadMoreUI();
     attachEventListeners();
     initializeGoogleStatus();
+
+    if (!state.channels.length) {
+        setFeedError("Open Settings to import subscriptions using Google or OPML.", "warning");
+    }
 }
 
 boot();

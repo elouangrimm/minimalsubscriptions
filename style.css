@@ -67,6 +67,10 @@ body {
     overflow-x: hidden;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
 .background-grid {
     position: fixed;
     inset: 0;
@@ -122,6 +126,12 @@ h3 {
     color: var(--text);
 }
 
+h4 {
+    font-size: 0.94rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
 a {
     color: var(--accent-soft);
     text-decoration: none;
@@ -150,6 +160,19 @@ button,
     font-size: 0.9rem;
     cursor: pointer;
     transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.btn-primary {
+    border-color: var(--accent);
+    background-color: var(--accent);
+    color: var(--stone-050);
+}
+
+.btn-primary:hover,
+.btn-primary:focus-visible {
+    border-color: var(--accent-soft);
+    background-color: var(--accent-soft);
+    color: var(--stone-950);
 }
 
 button:hover,
@@ -187,6 +210,10 @@ select {
     font-size: 0.95rem;
 }
 
+input[type="search"] {
+    padding-right: 38px;
+}
+
 input:focus,
 select:focus {
     border-color: var(--accent);
@@ -213,6 +240,10 @@ label {
     font-size: 0.9rem;
     cursor: pointer;
     user-select: none;
+}
+
+.checkbox label {
+    margin: 0;
 }
 
 .checkbox input {
@@ -284,6 +315,23 @@ label {
     padding-bottom: 36px;
 }
 
+.control-rack {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    border: 1px solid var(--line-strong);
+    background-color: var(--veil-deep);
+    padding: 12px;
+    animation: rise-in 0.35s ease both;
+}
+
+.control-rack .panel-copy {
+    margin: 0;
+    margin-left: auto;
+    max-width: 58ch;
+}
+
 .panel {
     border: 1px solid var(--line-strong);
     background-color: var(--veil-deep);
@@ -291,20 +339,12 @@ label {
     animation: rise-in 0.45s ease both;
 }
 
+.feed-panel {
+    min-height: 50vh;
+}
+
 .panel:nth-of-type(1) {
     animation-delay: 0.03s;
-}
-
-.panel:nth-of-type(2) {
-    animation-delay: 0.08s;
-}
-
-.panel:nth-of-type(3) {
-    animation-delay: 0.13s;
-}
-
-.panel:nth-of-type(4) {
-    animation-delay: 0.18s;
 }
 
 .panel-heading {
@@ -322,6 +362,18 @@ label {
     margin-top: 6px;
     color: var(--text-muted);
     font-size: 0.92rem;
+}
+
+.helper-copy {
+    font-size: 0.84rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+.helper-copy a {
+    display: inline-block;
+    margin-inline: 4px;
+    color: var(--accent-soft);
 }
 
 .import-grid {
@@ -362,6 +414,10 @@ label {
     display: grid;
 }
 
+.field-wrap + .field-wrap {
+    margin-top: 2px;
+}
+
 .action-row {
     display: flex;
     gap: 10px;
@@ -393,34 +449,6 @@ label {
 
 .status-hidden {
     display: none;
-}
-
-.channel-list {
-    list-style: none;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 8px;
-    max-height: 220px;
-    overflow-y: auto;
-    padding-right: 6px;
-}
-
-.channel-item {
-    border: 1px solid var(--line-soft);
-    background-color: var(--bg-raised);
-    padding: 10px 12px;
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 0.9rem;
-}
-
-.channel-item span:last-child {
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
 }
 
 .feed-list {
@@ -482,6 +510,124 @@ label {
     letter-spacing: 0.06em;
 }
 
+.load-more-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 14px;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 12px;
+}
+
+.load-more-row .panel-copy {
+    margin: 0;
+}
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 22px;
+    background: rgba(12, 10, 9, 0.88);
+    backdrop-filter: blur(8px);
+}
+
+.overlay[hidden] {
+    display: none;
+}
+
+.modal-panel {
+    width: min(980px, 94vw);
+    max-height: min(88vh, 900px);
+    overflow-y: auto;
+    border: 1px solid var(--line-strong);
+    background-color: var(--bg-raised);
+    padding: 18px;
+    display: grid;
+    gap: 16px;
+    animation: rise-in 0.22s ease both;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--line-soft);
+    padding-bottom: 12px;
+}
+
+.settings-grid {
+    display: grid;
+    gap: 14px;
+}
+
+.modal-section {
+    border: 1px solid var(--line-soft);
+    background-color: var(--veil-deep);
+    padding: 14px;
+}
+
+.subscription-list {
+    list-style: none;
+    margin-top: 10px;
+    display: grid;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.subscription-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--line-soft);
+    background-color: var(--bg);
+    padding: 9px 10px;
+}
+
+.subscription-meta {
+    display: grid;
+    gap: 2px;
+}
+
+.subscription-name {
+    font-size: 0.9rem;
+    color: var(--text-bright);
+}
+
+.subscription-source {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.remove-channel-button {
+    min-height: auto;
+    padding: 7px 10px;
+    border-color: var(--line-strong);
+    background-color: transparent;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.remove-channel-button:hover,
+.remove-channel-button:focus-visible {
+    border-color: var(--danger);
+    background-color: rgba(239, 68, 68, 0.08);
+    color: var(--danger);
+}
+
 .feed-link:hover,
 .feed-link:focus-visible {
     border-color: var(--accent);
@@ -519,11 +665,34 @@ label {
         padding-top: 40px;
     }
 
+    .control-rack {
+        align-items: stretch;
+    }
+
+    .control-rack .panel-copy {
+        width: 100%;
+        margin-left: 0;
+    }
+
     .panel {
         padding: 16px;
     }
 
     .panel-heading-inline {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .modal-panel {
+        padding: 12px;
+    }
+
+    .modal-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .subscription-item {
         align-items: flex-start;
         flex-direction: column;
     }

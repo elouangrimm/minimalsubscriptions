@@ -1,128 +1,164 @@
 # Minimal Subscriptions
 
-Text-first, chronological YouTube subscriptions feed.
+Minimal, no-clickbait YouTube subscriptions feed.
 
-No recommendations, no ranking model, no autoplay prompts.
+Main page is feed-first with one clear refresh action. Settings, imports, and subscription management live in a dedicated popup.
 
-## Features
+## What This Version Does
 
-- Dual import paths in V1:
-  - Google OAuth import (`youtube.readonly`) to fetch your subscriptions list
-  - OPML upload from YouTube-Subscriptions-RSS export
-- Chronological feed only (newest first)
-- No clickbait-oriented sorting logic
-- YouTube open target by default
-- Optional Invidious playback links
-- Thumbnails off by default for a calmer reading flow
-- Minimal serverless backend for RSS aggregation and CORS-safe fetching
-- Local-first persistence (`localStorage`) for channels, settings, and cached feed
+- Feed-first layout with uninterrupted timeline
+- Clear primary action: Refresh Feed
+- Separate settings popup for import, playback options, and subscription management
+- Remove subscriptions from the settings popup (not from main feed)
+- Shorts filtered out by default
+- Batched loading by channel groups to reduce bandwidth and improve speed
+- Optional thumbnail rendering (off by default)
+- YouTube opens by default, optional Invidious links
 
 ## Tech Stack
 
 - Plain HTML5
-- CSS3 (custom properties, flat zero-radius design)
+- CSS3 custom properties, dark flat stone palette, zero border radius
 - Vanilla JavaScript (ES6+)
-- Vercel Serverless Function (`api/feed.js`) for YouTube RSS aggregation
+- Vercel serverless API for RSS fetching: `api/feed.js`
 
-## Project Structure
+## Run Locally
 
-```text
-minimalsubscriptions/
-|- index.html
-|- style.css
-|- script.js
-|- api/
-|  |- feed.js
-|- assets/
-|  |- images/
-|  |- fonts/
-|- vercel.json
-|- README.md
-```
-
-## Local Usage
-
-For full functionality (frontend + API), run with Vercel dev:
+Use Vercel dev so both static app and API route run together:
 
 ```bash
 vercel dev
 ```
 
-Then open the local URL printed by Vercel.
+Then open the localhost URL printed by Vercel.
 
-## Google Import Setup
+## Detailed Google Auth Setup
 
-Google import needs a Web OAuth Client ID.
+Google import uses browser OAuth and reads subscriptions with `youtube.readonly`.
 
-1. Create a Google Cloud project.
-2. Enable YouTube Data API v3.
-3. Create OAuth credentials of type Web application.
-4. Add your local/dev origin to Authorized JavaScript origins.
-5. Put the client id into this tag in `index.html`:
+### 1. Create Google Cloud project
+
+1. Open Google Cloud Console.
+2. Create a new project (or select an existing one).
+
+### 2. Enable YouTube Data API v3
+
+1. In APIs & Services, open Library.
+2. Search for YouTube Data API v3.
+3. Click Enable.
+
+### 3. Configure OAuth consent screen
+
+1. Open APIs & Services, then OAuth consent screen.
+2. Choose External (or Internal for Workspace-only usage).
+3. Fill required fields (app name, support email, developer contact).
+4. Save.
+5. Add test users if your app is not published.
+
+### 4. Create OAuth client id (Web)
+
+1. Open APIs & Services, then Credentials.
+2. Click Create Credentials, OAuth client ID.
+3. Application type: Web application.
+4. Add Authorized JavaScript origins:
+   - `http://localhost:3000`
+   - Your deployed domain, for example `https://your-domain.vercel.app`
+5. Create and copy the Client ID.
+
+No redirect URI is required for this token-client flow.
+
+### 5. Put client id into app
+
+In `index.html`, set this meta tag:
 
 ```html
 <meta name="google-client-id" content="YOUR_CLIENT_ID.apps.googleusercontent.com">
 ```
 
-Scope used:
+### 6. Verify import
 
-- `https://www.googleapis.com/auth/youtube.readonly`
+1. Run `vercel dev`.
+2. Open app.
+3. Click Settings.
+4. Use Import From Google.
 
-The app only imports your subscriptions list and does not post or modify YouTube data.
+### Common Google OAuth issues
 
-## OPML Import Setup
+- `origin_mismatch`: local or deployed origin missing from Authorized JavaScript origins.
+- `access_denied`: user canceled consent or app is restricted to unlisted test users.
+- no popup: browser popup blocker blocked Google auth window.
 
-1. Go to `https://www.youtube.com/feed/channels` while logged in.
-2. Run the script or bookmarklet from `jeb5/YouTube-Subscriptions-RSS`.
-3. Export `youtube_subs.opml`.
-4. Upload that file in Minimal Subscriptions.
+## OPML Import With Bookmarklet
 
-## API Behavior
+This app supports OPML generated from the jeb5 tool.
 
-Endpoint: `POST /api/feed`
+Repository:
 
-Request body:
+- [jeb5/YouTube-Subscriptions-RSS](https://github.com/jeb5/YouTube-Subscriptions-RSS)
+
+### Option A: Drag bookmarklet from repo
+
+1. Open the repository README.
+2. Find the Bookmarklet section.
+3. Drag the Bookmarklet link from that page into your bookmarks bar.
+4. Go to `https://www.youtube.com/feed/channels` while logged in.
+5. Click the saved bookmarklet.
+6. Download `youtube_subs.opml`.
+
+### Option B: Manual bookmark creation
+
+1. Create a new browser bookmark.
+2. Copy the `javascript:` code from the repository Bookmarklet section.
+3. Paste it into the bookmark URL field.
+4. Open `https://www.youtube.com/feed/channels` and click the bookmark.
+5. Download `youtube_subs.opml`.
+
+### Import into app
+
+1. Open Settings.
+2. Use Select OPML File.
+3. Choose `youtube_subs.opml`.
+
+## Feed Loading Model
+
+The app loads feed data in batches by subscription channels.
+
+- Refresh loads the first channel batch.
+- Load More Channels fetches the next batch.
+- This reduces initial bandwidth and keeps thumbnail mode from becoming too slow.
+
+API endpoint: `POST /api/feed`
+
+Request:
 
 ```json
 {
     "channelIds": ["UCxxxxxxxxxxxxxxxxxxxxxx"],
-    "limitPerChannel": 8
+    "limitPerChannel": 6,
+    "cursor": 0,
+    "batchSize": 20
 }
 ```
 
-Response includes:
+Response fields include:
 
-- `videos`: normalized, deduplicated, chronologically sorted video items
-- `failures`: per-channel fetch failures (partial success is allowed)
-- `generatedAt`: feed generation timestamp
+- `videos`
+- `failures`
+- `cursor`
+- `nextCursor`
+- `hasMore`
+- `totalChannels`
+- `loadedChannels`
 
-## Design Direction
+## Privacy
 
-This project follows Elouan's baseline:
-
-- Dark-first stone palette
-- Flat UI and zero border radius
-- Monospace headings and clean sans body text
-- Minimal, purposeful motion
-
-It adds selective expressive accents through atmospheric background layering and restrained staged reveal animation.
-
-## Privacy Model
-
-- Subscriptions and UI preferences are stored locally in your browser.
-- The backend fetches public channel RSS feeds.
-- No recommendation profile or engagement scoring is created.
-
-## Known Constraints
-
-- YouTube RSS feed availability can change over time.
-- OPML export script depends on YouTube page structure.
-- Google OAuth import requires manual cloud setup.
-- `yt-dlp` integration is intentionally out of scope for V1.
+- Imported subscriptions and UI settings are stored locally in browser storage.
+- Serverless API fetches public RSS feeds.
+- No recommendation profile or engagement ranking is generated.
 
 ## Deployment
 
-Deploy on Vercel:
+Deploy with:
 
 ```bash
 vercel

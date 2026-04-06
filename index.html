@@ -27,101 +27,127 @@
     <header class="app-header">
         <p class="eyebrow">Minimal Subscriptions</p>
         <h1>A Quiet YouTube Feed</h1>
-        <p class="subtitle">Chronological uploads from your channels. No ranking, no recommendation loops, no noise.</p>
+        <p class="subtitle">Chronological uploads from your channels. No ranking loops, no recommendation bait, no clutter.</p>
     </header>
 
     <main class="app-layout">
-        <section class="panel" aria-labelledby="import-title">
-            <div class="panel-heading">
-                <h2 id="import-title">Import Channels</h2>
-                <p class="panel-copy">Use Google for automatic import or upload OPML exported from YouTube-Subscriptions-RSS.</p>
-            </div>
-
-            <div class="import-grid">
-                <article class="import-card" aria-labelledby="google-import-title">
-                    <h3 id="google-import-title">Google Import</h3>
-                    <p class="import-copy">Uses youtube.readonly to pull your subscriptions list only.</p>
-                    <button id="google-import-button" type="button">Import From Google</button>
-                    <p id="google-status" class="status" role="status" aria-live="polite">Google import is idle.</p>
-                </article>
-
-                <article class="import-card" aria-labelledby="opml-import-title">
-                    <h3 id="opml-import-title">OPML Import</h3>
-                    <p class="import-copy">Upload a .opml file from youtube.com/feed/channels export script.</p>
-                    <label class="file-trigger" for="opml-input">Select OPML File</label>
-                    <input id="opml-input" class="file-input" type="file" accept=".opml,.xml,text/xml,application/xml">
-                    <p id="opml-status" class="status" role="status" aria-live="polite">OPML import is idle.</p>
-                </article>
-            </div>
+        <section class="control-rack" aria-label="Feed actions">
+            <button id="refresh-feed-button" class="btn-primary" type="button">Refresh Feed</button>
+            <button id="open-settings-button" class="btn-secondary" type="button">Settings</button>
+            <p id="feed-stats" class="panel-copy">No feed fetched yet.</p>
         </section>
 
-        <section class="panel" aria-labelledby="controls-title">
-            <div class="panel-heading">
-                <h2 id="controls-title">Feed Controls</h2>
-                <p class="panel-copy">Everything stays chronological. You control visibility and playback target.</p>
-            </div>
-
-            <div class="controls-grid">
-                <div class="field-wrap">
-                    <label for="search-input">Search Title Or Channel</label>
-                    <input id="search-input" type="search" placeholder="Search videos">
-                </div>
-
-                <div class="field-wrap">
-                    <label for="channel-filter">Filter By Channel</label>
-                    <select id="channel-filter">
-                        <option value="">All Channels</option>
-                    </select>
-                </div>
-
-                <div class="field-wrap">
-                    <label for="playback-provider">Open Videos In</label>
-                    <select id="playback-provider">
-                        <option value="youtube">YouTube (default)</option>
-                        <option value="invidious">Invidious</option>
-                    </select>
-                </div>
-
-                <div class="field-wrap">
-                    <label for="invidious-base">Invidious Base URL</label>
-                    <input id="invidious-base" type="url" value="https://yewtu.be" placeholder="https://yewtu.be">
-                </div>
-
-                <label class="checkbox" for="show-thumbnails">
-                    <input id="show-thumbnails" type="checkbox">
-                    <span class="checkmark"></span>
-                    Show Thumbnails
-                </label>
-
-                <div class="action-row">
-                    <button id="refresh-feed-button" type="button">Refresh Feed</button>
-                    <button id="clear-subscriptions-button" class="btn-secondary" type="button">Clear Subscriptions</button>
-                </div>
-            </div>
-        </section>
-
-        <section class="panel" aria-labelledby="channels-title">
-            <div class="panel-heading panel-heading-inline">
-                <h2 id="channels-title">Subscriptions</h2>
-                <p id="channel-count" class="panel-copy">0 channels loaded.</p>
-            </div>
-            <ul id="channel-list" class="channel-list" aria-live="polite"></ul>
-        </section>
-
-        <section class="panel" aria-labelledby="feed-title">
+        <section class="panel feed-panel" aria-labelledby="feed-title">
             <div class="panel-heading panel-heading-inline">
                 <h2 id="feed-title">Latest Videos</h2>
-                <p id="feed-stats" class="panel-copy">No feed fetched yet.</p>
+                <p id="channel-count" class="panel-copy">0 subscriptions loaded.</p>
             </div>
 
             <p id="feed-error" class="status status-hidden" role="alert"></p>
             <ul id="feed-list" class="feed-list" aria-live="polite"></ul>
             <p id="feed-empty" class="empty-state">Import subscriptions, then refresh to load the latest uploads.</p>
+
+            <div class="load-more-row">
+                <button id="load-more-button" class="btn-secondary" type="button">Load More Channels</button>
+                <p id="load-more-status" class="panel-copy">Refresh to start loading in batches.</p>
+            </div>
         </section>
     </main>
 
+    <div id="settings-overlay" class="overlay" hidden aria-hidden="true">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="modal-header">
+                <h2 id="settings-title">Feed Settings</h2>
+                <button id="close-settings-button" class="btn-secondary" type="button">Close</button>
+            </div>
+
+            <div class="settings-grid">
+                <section class="modal-section" aria-labelledby="import-title">
+                    <div class="panel-heading">
+                        <h3 id="import-title">Import Channels</h3>
+                        <p class="panel-copy">Import once, then use Refresh Feed from the main page.</p>
+                    </div>
+
+                    <div class="import-grid">
+                        <article class="import-card" aria-labelledby="google-import-title">
+                            <h4 id="google-import-title">Google Import</h4>
+                            <p class="import-copy">Uses <code>youtube.readonly</code> to read only your subscriptions.</p>
+                            <button id="google-import-button" type="button">Import From Google</button>
+                            <p id="google-status" class="status" role="status" aria-live="polite">Google import is idle.</p>
+                        </article>
+
+                        <article class="import-card" aria-labelledby="opml-import-title">
+                            <h4 id="opml-import-title">OPML Import</h4>
+                            <p class="import-copy">Upload your <code>youtube_subs.opml</code> file.</p>
+                            <label class="file-trigger" for="opml-input">Select OPML File</label>
+                            <input id="opml-input" class="file-input" type="file" accept=".opml,.xml,text/xml,application/xml">
+                            <p id="opml-status" class="status" role="status" aria-live="polite">OPML import is idle.</p>
+                            <p class="helper-copy">
+                                Need the export bookmarklet?
+                                <a href="javascript:(function()%7B(async()%3D%3E%7Bconst%20t%3Ddocument.createElement(%22dialog%22)%2Cn%3Ddocument.createElement(%22label%22)%2Co%3Ddocument.createElement(%22progress%22)%3Bt.style.cssText%3D%22display%3A%20flex%3B%20flex-direction%3A%20column%3B%20gap%3A%2015px%3B%20padding%3A%2020px%3B%22%2Ct.appendChild(n)%2Ct.appendChild(o)%2Cdocument.querySelector(%22ytd-app%22).appendChild(t)%2Ct.showModal()%2Cn.innerText%3D%22Loading%20subscriptions...%22%3Bconst%20l%3Ddocument.getElementById(%22content%22)%3Blet%20i%3Bdo%7Bi%3Dl.offsetHeight%2Cwindow.scrollBy(0%2C1e5)%2Cawait%20new%20Promise((e%3D%3EsetTimeout(e%2C500)))%7Dwhile(null!%3Dl.querySelector(%22%23spinnerContainer.active%22)%7C%7Cl.offsetHeight%3Ei)%3Btry%7Bconst%20t%3D%5B...l.querySelectorAll(%22ytd-browse%3Anot(%5Bhidden%5D)%20%23main-link.channel-link%22)%5D%3Bo.max%3Dt.length%2Co.value%3D0%3Bconst%20i%3D%5B%5D%3Bfor(e%20of%20t)%7Bn.innerText%3D%60Fetching%20URLS...%20(%24%7Bo.value%7D%2F%24%7Bo.max%7D)%60%3Btry%7Bconst%20t%3De.querySelector(%22yt-formatted-string.ytd-channel-name%22).innerText%2Cn%3Dawait%20fetch(e.href)%3Bif(!n.ok)%7Bconsole.error(%60Couldn't%20fetch%20channel%20page%20for%20%24%7Bt%7D%60)%3Bcontinue%7Dconst%20o%3D(await%20n.text()).match(%2F%3Clink%5Csrel%3D%22alternate%22%5Cstype%3D%22application%5C%2Frss%5C%2Bxml%22%5Cstitle%3D%22RSS%22%5Cshref%3D%22(.%2B%3F)%22%2F)%3Bif(null%3D%3Do)%7Bconsole.error(%60Couldn't%20find%20RSS%20feed%20for%20%24%7Bt%7D%60)%3Bcontinue%7Di.push(%5Bo%5B1%5D%2Ct%2Ce.href%5D)%7Dfinally%7Bo.value%2B%2B%2Co.replaceWith(o)%7D%7D0%3D%3Dt.length%26%26alert(%22Couldn't%20find%20any%20subscriptions%22)%3Bconst%20r%3Dt.length-i.length%3Br%3E0%26%26alert(%60%24%7Br%7D%20channel%24%7Br%3E1%3F%22s%22%3A%22%22%7D%20couldn't%20be%20fetched.%20Check%20the%20console%20for%20more%20info.%60)%3Bconst%20a%3De%3D%3Ee.replace(%2F%5B%3C%3E%26'%22%5D%2Fg%2C(e%3D%3E(%7B%22%3C%22%3A%22%26lt%3B%22%2C%22%3E%22%3A%22%26gt%3B%22%2C%22%26%22%3A%22%26amp%3B%22%2C%22'%22%3A%22%26apos%3B%22%2C'%22'%3A%22%26quot%3B%22%7D%5Be%5D)))%3Bif(i.length%3E0)%7Bconsole.log(i.map(((%5Be%5D)%3D%3Ee)).join(%22%5Cn%22))%3Blet%20e%3D%60%3C%3Fxml%20version%3D%221.0%22%20encoding%3D%22UTF-8%22%3F%3E%5Cn%3Copml%20version%3D%221.0%22%3E%5Cn%5Ct%3Chead%3E%5Cn%5Ct%5Ct%3Ctitle%3EYouTube%20Subscriptions%20as%20RSS%3C%2Ftitle%3E%5Cn%5Ct%3C%2Fhead%3E%5Cn%5Ct%3Cbody%3E%5Cn%5Ct%5Ct%3Coutline%20text%3D%22YouTube%20Subscriptions%22%3E%24%7Bi.map(((%5Be%2Ct%2Cn%5D)%3D%3E%60%5Cn%5Ct%5Ct%5Ct%3Coutline%20type%3D%22rss%22%20text%3D%22%24%7Ba(t)%7D%22%20title%3D%22%24%7Ba(t)%7D%22%20xmlUrl%3D%22%24%7Be%7D%22%20htmlUrl%3D%22%24%7Bn%7D%22%2F%3E%60)).join(%22%22)%7D%5Cn%5Ct%5Ct%3C%2Foutline%3E%5Cn%5Ct%3C%2Fbody%3E%5Cn%3C%2Fopml%3E%60%3Bconst%20t%3Dwindow.URL.createObjectURL(new%20Blob(%5Be%5D%2C%7Btype%3A%22text%2Fplain%22%7D))%2Cn%3Ddocument.createElement(%22a%22)%3Bn.setAttribute(%22download%22%2C%22youtube_subs.opml%22)%2Cn.setAttribute(%22href%22%2Ct)%2Cn.dataset.downloadurl%3D%60text%2Fplain%3Ayoutube_subs.opml%3A%24%7Bt%7D%60%2Cn.click()%7D%7Dcatch(e)%7Bconsole.error(e)%2Calert(%22Something%20went%20wrong.%20Check%20the%20console%20for%20more%20info.%22)%7Dfinally%7Bt.close()%2Ct.remove()%7D%7D)()%3B%7D)()%3B"rel="noopener noreferrer">Bookmarklet</a>
+                                DRAG the link to your bookmarks bar, then click it while you're on the YouTube Subscriptions page to export your channels as an OPML file.
+                            </p>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="modal-section" aria-labelledby="preferences-title">
+                    <div class="panel-heading">
+                        <h3 id="preferences-title">Playback And Filters</h3>
+                        <p class="panel-copy">Shorts are hidden by default.</p>
+                    </div>
+
+                    <div class="controls-grid">
+                        <div class="field-wrap">
+                            <label for="playback-provider">Open Videos In</label>
+                            <select id="playback-provider">
+                                <option value="youtube">YouTube (default)</option>
+                                <option value="invidious">Invidious</option>
+                            </select>
+                        </div>
+
+                        <div class="field-wrap">
+                            <label for="invidious-base">Invidious Base URL</label>
+                            <input id="invidious-base" type="url" value="https://yewtu.be" placeholder="https://yewtu.be">
+                        </div>
+
+                        <label class="checkbox" for="show-thumbnails">
+                            <input id="show-thumbnails" type="checkbox">
+                            <span class="checkmark"></span>
+                            Show Thumbnails
+                        </label>
+
+                        <label class="checkbox" for="show-shorts">
+                            <input id="show-shorts" type="checkbox">
+                            <span class="checkmark"></span>
+                            Show Shorts
+                        </label>
+                    </div>
+                </section>
+
+                <section class="modal-section" aria-labelledby="subscriptions-title">
+                    <div class="panel-heading panel-heading-inline">
+                        <div>
+                            <h3 id="subscriptions-title">Manage Subscriptions</h3>
+                            <p class="panel-copy">Remove channels here to keep the main feed clean.</p>
+                        </div>
+                        <button id="clear-subscriptions-button" class="btn-secondary" type="button">Clear All</button>
+                    </div>
+
+                    <div class="field-wrap">
+                        <label for="subscription-search">Search Subscriptions</label>
+                        <input id="subscription-search" type="search" placeholder="Search imported channels">
+                    </div>
+
+                    <ul id="subscription-list" class="subscription-list" aria-live="polite"></ul>
+                    <p id="subscription-empty" class="empty-state">No subscriptions imported yet.</p>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <footer class="app-footer">
-        <p>Text-first feed. Chronological order only. No recommendation engine.</p>
+        <p>Text-first feed. Chronological order only. Shorts hidden by default.</p>
     </footer>
 
     <script src="https://accounts.google.com/gsi/client" async defer></script>
