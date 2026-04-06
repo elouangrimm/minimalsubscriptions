@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Minimal YouTube subscriptions feed with OPML and Google import, chronological sorting, and no clickbait ranking.">
+    <meta name="author" content="Elouan Grimm">
+    <meta name="google-client-id" content="">
+
+    <meta property="og:title" content="Minimal Subscriptions">
+    <meta property="og:description" content="A calm chronological subscriptions feed for YouTube.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://minimalsubscriptions.vercel.app">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Minimal Subscriptions">
+    <meta name="twitter:description" content="A calm chronological subscriptions feed for YouTube.">
+
+    <title>Minimal Subscriptions</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230c0a09'/%3E%3Ctext x='50' y='58' fill='%23e7e5e4' font-size='38' text-anchor='middle' font-family='monospace'%3EMS%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-grid" aria-hidden="true"></div>
+
+    <header class="app-header">
+        <p class="eyebrow">Minimal Subscriptions</p>
+        <h1>A Quiet YouTube Feed</h1>
+        <p class="subtitle">Chronological uploads from your channels. No ranking, no recommendation loops, no noise.</p>
+    </header>
+
+    <main class="app-layout">
+        <section class="panel" aria-labelledby="import-title">
+            <div class="panel-heading">
+                <h2 id="import-title">Import Channels</h2>
+                <p class="panel-copy">Use Google for automatic import or upload OPML exported from YouTube-Subscriptions-RSS.</p>
+            </div>
+
+            <div class="import-grid">
+                <article class="import-card" aria-labelledby="google-import-title">
+                    <h3 id="google-import-title">Google Import</h3>
+                    <p class="import-copy">Uses youtube.readonly to pull your subscriptions list only.</p>
+                    <button id="google-import-button" type="button">Import From Google</button>
+                    <p id="google-status" class="status" role="status" aria-live="polite">Google import is idle.</p>
+                </article>
+
+                <article class="import-card" aria-labelledby="opml-import-title">
+                    <h3 id="opml-import-title">OPML Import</h3>
+                    <p class="import-copy">Upload a .opml file from youtube.com/feed/channels export script.</p>
+                    <label class="file-trigger" for="opml-input">Select OPML File</label>
+                    <input id="opml-input" class="file-input" type="file" accept=".opml,.xml,text/xml,application/xml">
+                    <p id="opml-status" class="status" role="status" aria-live="polite">OPML import is idle.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="panel" aria-labelledby="controls-title">
+            <div class="panel-heading">
+                <h2 id="controls-title">Feed Controls</h2>
+                <p class="panel-copy">Everything stays chronological. You control visibility and playback target.</p>
+            </div>
+
+            <div class="controls-grid">
+                <div class="field-wrap">
+                    <label for="search-input">Search Title Or Channel</label>
+                    <input id="search-input" type="search" placeholder="Search videos">
+                </div>
+
+                <div class="field-wrap">
+                    <label for="channel-filter">Filter By Channel</label>
+                    <select id="channel-filter">
+                        <option value="">All Channels</option>
+                    </select>
+                </div>
+
+                <div class="field-wrap">
+                    <label for="playback-provider">Open Videos In</label>
+                    <select id="playback-provider">
+                        <option value="youtube">YouTube (default)</option>
+                        <option value="invidious">Invidious</option>
+                    </select>
+                </div>
+
+                <div class="field-wrap">
+                    <label for="invidious-base">Invidious Base URL</label>
+                    <input id="invidious-base" type="url" value="https://yewtu.be" placeholder="https://yewtu.be">
+                </div>
+
+                <label class="checkbox" for="show-thumbnails">
+                    <input id="show-thumbnails" type="checkbox">
+                    <span class="checkmark"></span>
+                    Show Thumbnails
+                </label>
+
+                <div class="action-row">
+                    <button id="refresh-feed-button" type="button">Refresh Feed</button>
+                    <button id="clear-subscriptions-button" class="btn-secondary" type="button">Clear Subscriptions</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" aria-labelledby="channels-title">
+            <div class="panel-heading panel-heading-inline">
+                <h2 id="channels-title">Subscriptions</h2>
+                <p id="channel-count" class="panel-copy">0 channels loaded.</p>
+            </div>
+            <ul id="channel-list" class="channel-list" aria-live="polite"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="feed-title">
+            <div class="panel-heading panel-heading-inline">
+                <h2 id="feed-title">Latest Videos</h2>
+                <p id="feed-stats" class="panel-copy">No feed fetched yet.</p>
+            </div>
+
+            <p id="feed-error" class="status status-hidden" role="alert"></p>
+            <ul id="feed-list" class="feed-list" aria-live="polite"></ul>
+            <p id="feed-empty" class="empty-state">Import subscriptions, then refresh to load the latest uploads.</p>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <p>Text-first feed. Chronological order only. No recommendation engine.</p>
+    </footer>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="script.js"></script>
+</body>
+</html>
